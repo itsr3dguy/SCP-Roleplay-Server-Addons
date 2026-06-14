@@ -10,40 +10,16 @@ local ReportTimeout  = 300
 local ConfirmTimeout = 10
 local RequiredKeycard = ""
 local ReportScore = 10
-local TerminalCount = 1 -- number of terminals in your map. Name them ReportTerminal1, ReportTerminal2, etc.
+local TerminalCount = 1 -- Number of terminals in your map. Name them ReportTerminal1, ReportTerminal2, etc. Optional exits: ReportExit1, ReportExit2, etc. (each ends only its matching terminal's session)
+local LightHeight = 2 -- studs above the terminal to place the light
 
 local KeycardRank = {
     ["L1"] = 1, ["L2"] = 2, ["L3"] = 3, ["L4"] = 4, ["O5"] = 5,
 }
 
--- ===== TERMINAL REGISTRY =====
-local Terminals = {}
-
-for i = 1, TerminalCount do
-    local Name = "ReportTerminal" .. i
-    local Part = f(Name)
-
-    if Part then
-        local Light = Instance.new("PointLight")
-        Light.Brightness = 0
-        Light.Range = 16
-        Light.Color = Color3.fromRGB(255, 255, 255)
-        Light.Parent = Part
-
-        Terminals[Name] = {
-            Part  = Part,
-            Light = Light,
-            InUse = false,
-            User  = nil,
-        }
-
-        print("Registered terminal: " .. Name)
-    else
-        print("Terminal not found: " .. Name)
-    end
-end
-
 -- ===== STATE =====
+local Terminals       = {}
+local ExitParts       = {}
 local PlayerTerminal  = {}
 local AwaitingReport  = {}
 local AwaitingConfirm = {}
@@ -56,6 +32,10 @@ local function GetTerminal(Player)
     return Terminals[Name]
 end
 
+local function IsSessionActive(Player)
+    return AwaitingReport[Player] or AwaitingConfirm[Player] ~= nil
+end
+
 local function PlaySound(Part, SoundId)
     local Sound = Instance.new("Sound")
     Sound.SoundId = SoundId
@@ -64,26 +44,49 @@ local function PlaySound(Part, SoundId)
     playSound(Sound)
 end
 
-local function SetLight(T, Color, Brightness)
-    tween(T.Light, TweenInfo.new(0.2), { Color = Color, Brightness = Brightness })
+-- ===== LIGHT (temp part, created/destroyed on demand) =====
+local function RemoveLight(T)
+    if T.LightPart then
+        T.LightPart:Destroy()
+        T.LightPart = nil
+    end
+end
+
+local function ShowLight(T, Color, Brightness)
+    RemoveLight(T)
+
+    local LightPart = Instance.new("Part")
+    LightPart.Anchored = true
+    LightPart.CanCollide = false
+    LightPart.Transparency = 1
+    LightPart.Size = Vector3.new(0.2, 0.2, 0.2)
+
+    f(LightPart)
+
+    local Pos = T.Part.Position
+    LightPart.Position = Vector3.new(Pos.X, Pos.Y + LightHeight, Pos.Z)
+
+    local Light = Instance.new("PointLight")
+    Light.Brightness = Brightness
+    Light.Range = 16
+    Light.Color = Color
+    Light.Parent = LightPart
+
+    T.LightPart = LightPart
 end
 
 local function FlickerLight(T, Color)
-    SetLight(T, Color, 5)
+    ShowLight(T, Color, 5)
     task.wait(0.2)
-    SetLight(T, Color, 1)
+    RemoveLight(T)
     task.wait(0.15)
-    SetLight(T, Color, 5)
+    ShowLight(T, Color, 5)
     task.wait(0.2)
-    SetLight(T, Color, 0)
+    RemoveLight(T)
 end
 
 local function PulseLight(T, Color)
-    SetLight(T, Color, 3)
-end
-
-local function IsSessionActive(Player)
-    return AwaitingReport[Player] or AwaitingConfirm[Player] ~= nil
+    ShowLight(T, Color, 3)
 end
 
 local function EndSession(Player)
@@ -92,7 +95,7 @@ local function EndSession(Player)
     if T then
         T.InUse = false
         T.User  = nil
-        SetLight(T, Color3.fromRGB(0, 0, 0), 0)
+        RemoveLight(T)
     end
     AwaitingReport[Player]  = nil
     AwaitingConfirm[Player] = nil
@@ -131,45 +134,72 @@ local function SubmitReport(Player, ReportText)
     EndSession(Player)
 end
 
--- ===== EXIT BOUNDARY PART =====
--- Place a part named "ReportExit" at the room exit. Touching it while in a session ends it.
-local ExitPart = f("ReportExit")
-if ExitPart then
-    ExitPart.Touched:Connect(function(Player)
-        if Player and IsSessionActive(Player) then
-            local T = GetTerminal(Player)
-            if T then
-                FlickerLight(T, Color3.fromRGB(255, 0, 0))
-                PlaySound(T.Part, SoundIncorrect)
+-- ===== REGISTRATION POLLING =====
+local function RegisterAll()
+    -- terminals
+    for i = 1, TerminalCount do
+        local Name = "ReportTerminal" .. i
+        if not Terminals[Name] then
+            local Part = f(Name)
+            if Part then
+                Terminals[Name] = {
+                    Part      = Part,
+                    LightPart = nil,
+                    InUse     = false,
+                    User      = nil,
+                }
+                print("Registered terminal: " .. Name)
             end
-            EndSession(Player)
         end
-    end)
-    print("Exit boundary registered")
-else
-    print("No ReportExit part found (optional)")
+    end
+
+    -- exits (each ReportExitN ends only ReportTerminalN's session)
+    for i = 1, TerminalCount do
+        local Name = "ReportExit" .. i
+        if not ExitParts[Name] then
+            local ExitPart = f(Name)
+            if ExitPart then
+                local TerminalName = "ReportTerminal" .. i
+                ExitPart.Touched:Connect(function(Player)
+                    if Player
+                    and IsSessionActive(Player)
+                    and PlayerTerminal[Player] == TerminalName then
+                        local T = GetTerminal(Player)
+                        if T then
+                            FlickerLight(T, Color3.fromRGB(255, 0, 0))
+                            PlaySound(T.Part, SoundIncorrect)
+                        end
+                        EndSession(Player)
+                    end
+                end)
+                ExitParts[Name] = true
+                print("Registered exit: " .. Name .. " -> " .. TerminalName)
+            end
+        end
+    end
 end
 
--- ===== DEATH / SPAWN / LEFT — silent end =====
+task.spawn(function()
+    while true do
+        RegisterAll()
+        task.wait(3)
+    end
+end)
+
+-- ===== DEATH / SPAWN / LEFT =====
 event("death", function(Data)
     local Player = Data.Value
-    if Player and IsSessionActive(Player) then
-        EndSession(Player)
-    end
+    if Player and IsSessionActive(Player) then EndSession(Player) end
 end)
 
 event("spawned", function(Data)
     local Player = Data.Value
-    if Player and IsSessionActive(Player) then
-        EndSession(Player)
-    end
+    if Player and IsSessionActive(Player) then EndSession(Player) end
 end)
 
 event("left", function(Data)
     local Player = Data.Value
-    if Player and IsSessionActive(Player) then
-        EndSession(Player)
-    end
+    if Player and IsSessionActive(Player) then EndSession(Player) end
 end)
 
 -- ===== INTERACTIONS =====
