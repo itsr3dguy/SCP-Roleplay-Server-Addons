@@ -16,7 +16,7 @@ local KeycardRank = {
 }
 
 -- ===== TERMINAL REGISTRY =====
-local TerminalCount = 3
+local TerminalCount = 1 -- Number of terminals in your map. Name them ReportTerminal1, ReportTerminal2, etc.
 local Terminals = {}
 
 for i = 1, TerminalCount do
