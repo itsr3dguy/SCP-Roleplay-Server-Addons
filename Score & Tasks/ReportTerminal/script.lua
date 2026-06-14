@@ -10,7 +10,7 @@ local ReportTimeout  = 300
 local ConfirmTimeout = 10
 local RequiredKeycard = ""
 local ReportScore = 10
-local TerminalCount = 1 -- Number of terminals in your map. Name them ReportTerminal1, ReportTerminal2, etc.
+local TerminalCount = 1 -- number of terminals in your map. Name them ReportTerminal1, ReportTerminal2, etc.
 
 local KeycardRank = {
     ["L1"] = 1, ["L2"] = 2, ["L3"] = 3, ["L4"] = 4, ["O5"] = 5,
@@ -24,35 +24,17 @@ for i = 1, TerminalCount do
     local Part = f(Name)
 
     if Part then
-        -- remove any existing PointLights first
-        for _, child in pairs(Part:GetChildren()) do
-            if child:IsA("PointLight") then
-                child:Destroy()
-            end
-        end
-
         local Light = Instance.new("PointLight")
         Light.Brightness = 0
         Light.Range = 16
         Light.Color = Color3.fromRGB(255, 255, 255)
         Light.Parent = Part
 
-        local function MakeSound(SoundId)
-            local Sound = Instance.new("Sound")
-            Sound.SoundId = SoundId
-            Sound.Volume = 3
-            Sound.Parent = Part
-            return Sound
-        end
-
         Terminals[Name] = {
-            Part   = Part,
-            Light  = Light,
-            SoundA = MakeSound(SoundActivate),
-            SoundC = MakeSound(SoundComplete),
-            SoundI = MakeSound(SoundIncorrect),
-            InUse  = false,
-            User   = nil,
+            Part  = Part,
+            Light = Light,
+            InUse = false,
+            User  = nil,
         }
 
         print("Registered terminal: " .. Name)
@@ -65,6 +47,7 @@ end
 local PlayerTerminal  = {}
 local AwaitingReport  = {}
 local AwaitingConfirm = {}
+local SessionToken    = {}
 
 -- ===== HELPERS =====
 local function GetTerminal(Player)
@@ -73,20 +56,8 @@ local function GetTerminal(Player)
     return Terminals[Name]
 end
 
-local function PlaySound(Sound)
-    Sound:Stop()
-    playSound(Sound)
-end
-
-local function PlaySoundOnce(SoundId, Part)
-    -- remove old one-shot sounds to prevent stacking
-    for _, child in pairs(Part:GetChildren()) do
-        if child:IsA("Sound") and child.Name == "OnceSound" then
-            child:Destroy()
-        end
-    end
+local function PlaySound(Part, SoundId)
     local Sound = Instance.new("Sound")
-    Sound.Name = "OnceSound"
     Sound.SoundId = SoundId
     Sound.Volume = 3
     Sound.Parent = Part
@@ -94,10 +65,7 @@ local function PlaySoundOnce(SoundId, Part)
 end
 
 local function SetLight(T, Color, Brightness)
-    tween(T.Light, TweenInfo.new(0.2), {
-        Color = Color,
-        Brightness = Brightness
-    })
+    tween(T.Light, TweenInfo.new(0.2), { Color = Color, Brightness = Brightness })
 end
 
 local function FlickerLight(T, Color)
@@ -114,45 +82,18 @@ local function PulseLight(T, Color)
     SetLight(T, Color, 3)
 end
 
-local function ResetTerminal(Player)
-    local T = GetTerminal(Player)
-    if T then
-        T.InUse = false
-        T.User  = nil
-        FlickerLight(T, Color3.fromRGB(255, 0, 0))
-        PlaySound(T.SoundI)
-    end
-    AwaitingReport[Player]  = nil
-    AwaitingConfirm[Player] = nil
-    PlayerTerminal[Player]  = nil
+local function IsSessionActive(Player)
+    return AwaitingReport[Player] or AwaitingConfirm[Player] ~= nil
 end
 
-local function SubmitReport(Player, ReportText)
+local function EndSession(Player)
+    SessionToken[Player] = (SessionToken[Player] or 0) + 1
     local T = GetTerminal(Player)
-
-    http(
-        SupabaseUrl .. "/functions/v1/report-complete",
-        "post",
-        {
-            ["Content-Type"] = "application/json",
-            ["Authorization"] = "Bearer " .. SupabaseKey
-        },
-        jsonEncode({
-            player  = Player,
-            message = ReportText
-        })
-    )
-
-    local CurrentScore = getPlayerScore(Player) or 0
-    setPlayerScore(Player, CurrentScore + ReportScore)
-
     if T then
         T.InUse = false
         T.User  = nil
-        FlickerLight(T, Color3.fromRGB(0, 220, 50))
-        PlaySound(T.SoundC)
+        SetLight(T, Color3.fromRGB(0, 0, 0), 0)
     end
-
     AwaitingReport[Player]  = nil
     AwaitingConfirm[Player] = nil
     PlayerTerminal[Player]  = nil
@@ -166,12 +107,68 @@ local function HasAccess(Player)
     return PlayerRank >= RequiredRank
 end
 
--- ===== DEATH EVENT — clear session on death =====
+local function SubmitReport(Player, ReportText)
+    local T = GetTerminal(Player)
+
+    http(
+        SupabaseUrl .. "/functions/v1/report-complete",
+        "post",
+        {
+            ["Content-Type"] = "application/json",
+            ["Authorization"] = "Bearer " .. SupabaseKey
+        },
+        jsonEncode({ player = Player, message = ReportText })
+    )
+
+    local CurrentScore = getPlayerScore(Player) or 0
+    setPlayerScore(Player, CurrentScore + ReportScore)
+
+    if T then
+        FlickerLight(T, Color3.fromRGB(0, 220, 50))
+        PlaySound(T.Part, SoundComplete)
+    end
+
+    EndSession(Player)
+end
+
+-- ===== EXIT BOUNDARY PART =====
+-- Place a part named "ReportExit" at the room exit. Touching it while in a session ends it.
+local ExitPart = f("ReportExit")
+if ExitPart then
+    ExitPart.Touched:Connect(function(Player)
+        if Player and IsSessionActive(Player) then
+            local T = GetTerminal(Player)
+            if T then
+                FlickerLight(T, Color3.fromRGB(255, 0, 0))
+                PlaySound(T.Part, SoundIncorrect)
+            end
+            EndSession(Player)
+        end
+    end)
+    print("Exit boundary registered")
+else
+    print("No ReportExit part found (optional)")
+end
+
+-- ===== DEATH / SPAWN / LEFT — silent end =====
 event("death", function(Data)
     local Player = Data.Value
-    if AwaitingReport[Player] or AwaitingConfirm[Player] then
-        print("Player died, resetting terminal session for " .. tostring(Player))
-        ResetTerminal(Player)
+    if Player and IsSessionActive(Player) then
+        EndSession(Player)
+    end
+end)
+
+event("spawned", function(Data)
+    local Player = Data.Value
+    if Player and IsSessionActive(Player) then
+        EndSession(Player)
+    end
+end)
+
+event("left", function(Data)
+    local Player = Data.Value
+    if Player and IsSessionActive(Player) then
+        EndSession(Player)
     end
 end)
 
@@ -185,7 +182,7 @@ event("interaction", function(Data)
 
     if not HasAccess(Player) then
         FlickerLight(T, Color3.fromRGB(255, 0, 0))
-        PlaySound(T.SoundI)
+        PlaySound(T.Part, SoundIncorrect)
         return
     end
 
@@ -194,22 +191,23 @@ event("interaction", function(Data)
         return
     end
 
-    if AwaitingReport[Player] or AwaitingConfirm[Player] then return end
+    if IsSessionActive(Player) then return end
 
     T.InUse = true
     T.User  = Player
     PlayerTerminal[Player] = InteractionName
     AwaitingReport[Player] = true
 
+    local MyToken = (SessionToken[Player] or 0)
+
     FlickerLight(T, Color3.fromRGB(0, 100, 255))
-    PlaySound(T.SoundA)
+    PlaySound(T.Part, SoundActivate)
 
-    print("Report session opened for " .. Player)
-
-    local SessionPlayer = Player
     task.delay(ReportTimeout, function()
-        if AwaitingReport[SessionPlayer] then
-            ResetTerminal(SessionPlayer)
+        if SessionToken[Player] == MyToken and AwaitingReport[Player] then
+            FlickerLight(T, Color3.fromRGB(255, 0, 0))
+            PlaySound(T.Part, SoundIncorrect)
+            EndSession(Player)
         end
     end)
 end)
@@ -219,6 +217,8 @@ event("chatted", function(Data)
     local Player = Data.Value[1]
     local Message = Data.Value[2]
     local MsgLower = Message:lower()
+
+    if not IsSessionActive(Player) then return end
 
     local T = GetTerminal(Player)
     if not T then return end
@@ -230,17 +230,11 @@ event("chatted", function(Data)
 
         if FirstWord == "yes" or FirstWord == "y" then
             local ReportText = AwaitingConfirm[Player]
-            AwaitingConfirm[Player] = nil
-            SetLight(T, Color3.fromRGB(0, 0, 0), 0)
             SubmitReport(Player, ReportText)
         elseif FirstWord == "no" or FirstWord == "n" then
-            AwaitingConfirm[Player] = nil
-            SetLight(T, Color3.fromRGB(0, 0, 0), 0)
             FlickerLight(T, Color3.fromRGB(255, 0, 0))
-            PlaySound(T.SoundI)
-            T.InUse = false
-            T.User  = nil
-            PlayerTerminal[Player] = nil
+            PlaySound(T.Part, SoundIncorrect)
+            EndSession(Player)
         end
         return
     end
@@ -251,7 +245,9 @@ event("chatted", function(Data)
     local Prefix = Message:sub(1, 7):upper()
 
     if Prefix ~= "REPORT " then
-        ResetTerminal(Player)
+        FlickerLight(T, Color3.fromRGB(255, 0, 0))
+        PlaySound(T.Part, SoundIncorrect)
+        EndSession(Player)
         return
     end
 
@@ -260,16 +256,16 @@ event("chatted", function(Data)
     AwaitingReport[Player]  = nil
     AwaitingConfirm[Player] = ReportText
 
+    local MyToken = (SessionToken[Player] or 0)
+
     PulseLight(T, Color3.fromRGB(0, 180, 80))
-    PlaySoundOnce(SoundConfirm, T.Part)
+    PlaySound(T.Part, SoundConfirm)
 
-    print("Awaiting confirmation from " .. Player .. " for: " .. ReportText)
-
-    local ConfirmPlayer = Player
-    local ConfirmText   = ReportText
     task.delay(ConfirmTimeout, function()
-        if AwaitingConfirm[ConfirmPlayer] == ConfirmText then
-            ResetTerminal(ConfirmPlayer)
+        if SessionToken[Player] == MyToken and AwaitingConfirm[Player] == ReportText then
+            FlickerLight(T, Color3.fromRGB(255, 0, 0))
+            PlaySound(T.Part, SoundIncorrect)
+            EndSession(Player)
         end
     end)
 end)
