@@ -10,13 +10,13 @@ local ReportTimeout  = 300
 local ConfirmTimeout = 10
 local RequiredKeycard = ""
 local ReportScore = 10
+local TerminalCount = 1 -- Number of terminals in your map. Name them ReportTerminal1, ReportTerminal2, etc.
 
 local KeycardRank = {
     ["L1"] = 1, ["L2"] = 2, ["L3"] = 3, ["L4"] = 4, ["O5"] = 5,
 }
 
 -- ===== TERMINAL REGISTRY =====
-local TerminalCount = 1 -- Number of terminals in your map. Name them ReportTerminal1, ReportTerminal2, etc.
 local Terminals = {}
 
 for i = 1, TerminalCount do
@@ -24,6 +24,13 @@ for i = 1, TerminalCount do
     local Part = f(Name)
 
     if Part then
+        -- remove any existing PointLights first
+        for _, child in pairs(Part:GetChildren()) do
+            if child:IsA("PointLight") then
+                child:Destroy()
+            end
+        end
+
         local Light = Instance.new("PointLight")
         Light.Brightness = 0
         Light.Range = 16
@@ -72,7 +79,14 @@ local function PlaySound(Sound)
 end
 
 local function PlaySoundOnce(SoundId, Part)
+    -- remove old one-shot sounds to prevent stacking
+    for _, child in pairs(Part:GetChildren()) do
+        if child:IsA("Sound") and child.Name == "OnceSound" then
+            child:Destroy()
+        end
+    end
     local Sound = Instance.new("Sound")
+    Sound.Name = "OnceSound"
     Sound.SoundId = SoundId
     Sound.Volume = 3
     Sound.Parent = Part
@@ -152,6 +166,15 @@ local function HasAccess(Player)
     return PlayerRank >= RequiredRank
 end
 
+-- ===== DEATH EVENT — clear session on death =====
+event("death", function(Data)
+    local Player = Data.Value
+    if AwaitingReport[Player] or AwaitingConfirm[Player] then
+        print("Player died, resetting terminal session for " .. tostring(Player))
+        ResetTerminal(Player)
+    end
+end)
+
 -- ===== INTERACTIONS =====
 event("interaction", function(Data)
     local Player = Data.Value[1]
@@ -180,6 +203,8 @@ event("interaction", function(Data)
 
     FlickerLight(T, Color3.fromRGB(0, 100, 255))
     PlaySound(T.SoundA)
+
+    print("Report session opened for " .. Player)
 
     local SessionPlayer = Player
     task.delay(ReportTimeout, function()
@@ -237,6 +262,8 @@ event("chatted", function(Data)
 
     PulseLight(T, Color3.fromRGB(0, 180, 80))
     PlaySoundOnce(SoundConfirm, T.Part)
+
+    print("Awaiting confirmation from " .. Player .. " for: " .. ReportText)
 
     local ConfirmPlayer = Player
     local ConfirmText   = ReportText
