@@ -1,6 +1,6 @@
 -- ===== CONFIG =====
-local SupabaseUrl = "https://qjerrbhmlinqnzspfpoo.supabase.co"
-local SupabaseKey = "sb_publishable_4ykI9eiygFXvuP3fOl1YMA_qTZJKpfL"
+local SupabaseUrl = "YOUR_SUPABASE_URL" -- change me please. :)
+local SupabaseKey = "YOUR_SUPABASE_ANON_KEY" -- change me please. :)
 local SoundActivate  = "rbxassetid://114843079311542"
 local SoundComplete  = "rbxassetid://136687499892456"
 local SoundIncorrect = "rbxassetid://134658487228492"
