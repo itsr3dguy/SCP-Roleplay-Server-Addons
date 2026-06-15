@@ -1,6 +1,7 @@
 -- ===== CONFIG =====
 local SupabaseUrl = "YOUR_SUPABASE_URL" -- change me please. :)
 local SupabaseKey = "YOUR_SUPABASE_ANON_KEY" -- change me please. :)
+local GameSecret  = "YOUR_GAME_SECRET" -- must match GAME_SECRET set in Supabase Edge Function secrets
 local DeliveryScore = 5
 local SoundStart      = "rbxassetid://88349156845443"
 local SoundEnd        = "rbxassetid://125705519082042"
@@ -34,7 +35,7 @@ local function GiveBox(Player)
     Part.Name = "Handle"
     Part.Size = Vector3.new(1.5, 1.5, 1.5)
     Part.CFrame = CFrame.new(999, 9999, 999)
-	Tool.Grip = CFrame.Angles(0, math.rad(-90), math.rad(-90))
+    Tool.Grip = CFrame.Angles(0, math.rad(-90), math.rad(-90))
 
     f(Tool)
     Part.Parent = Tool
@@ -44,8 +45,8 @@ local function GiveBox(Player)
     Mesh.MeshType = Enum.MeshType.FileMesh
     Mesh.MeshId = BoxMesh
     Mesh.TextureId = BoxTexture
-	Mesh.Scale = Vector3.new(4, 4, 4)
-	Mesh.Offset = Vector3.new(1, 0, 0.5)
+    Mesh.Scale = Vector3.new(4, 4, 4)
+    Mesh.Offset = Vector3.new(1, 0, 0.5)
     Mesh.Parent = Part
 
     giveTool(Player, Tool)
@@ -102,7 +103,8 @@ event("interaction", function(Data)
             "post",
             {
                 ["Content-Type"] = "application/json",
-                ["Authorization"] = "Bearer " .. SupabaseKey
+                ["Authorization"] = "Bearer " .. SupabaseKey,
+                ["x-game-secret"] = GameSecret
             },
             jsonEncode({ player = Player })
         )
