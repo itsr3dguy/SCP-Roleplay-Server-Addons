@@ -1,6 +1,7 @@
 -- ===== CONFIG =====
 local SupabaseUrl = "YOUR_SUPABASE_URL" -- change me please. :)
 local SupabaseKey = "YOUR_SUPABASE_ANON_KEY" -- change me please. :)
+local GameSecret  = "YOUR_GAME_SECRET" -- must match GAME_SECRET set in Supabase Edge Function secrets
 local SoundActivate  = "rbxassetid://114843079311542"
 local SoundComplete  = "rbxassetid://136687499892456"
 local SoundIncorrect = "rbxassetid://134658487228492"
@@ -118,7 +119,8 @@ local function SubmitReport(Player, ReportText)
         "post",
         {
             ["Content-Type"] = "application/json",
-            ["Authorization"] = "Bearer " .. SupabaseKey
+            ["Authorization"] = "Bearer " .. SupabaseKey,
+            ["x-game-secret"] = GameSecret
         },
         jsonEncode({ player = Player, message = ReportText })
     )
