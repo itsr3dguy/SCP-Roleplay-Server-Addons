@@ -3,6 +3,13 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 Deno.serve(async (req) => {
+    // ===== SECURITY CHECK =====
+    const SECRET = Deno.env.get("GAME_SECRET");
+    const provided = req.headers.get("x-game-secret");
+    if (!SECRET || provided !== SECRET) {
+        return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401 });
+    }
+
     const { player } = await req.json();
 
     if (!player) {
