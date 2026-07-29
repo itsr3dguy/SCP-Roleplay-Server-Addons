@@ -78,5 +78,48 @@ Duplicate the part and rename it depending on which system you are setting up.
 
 Start:
 
-```text
+```
+
 DeliveryStart
+
+```
+
+End:
+
+```
+
+DeliveryEnd
+
+```
+
+### ReportTerminal
+
+Use:
+
+```
+
+ReportTerminal1
+
+```
+
+Replace the number if you have multiple ReportTerminals:
+
+```
+
+ReportTerminal2
+ReportTerminal3
+...
+
+```
+
+---
+
+## Need Help?
+
+If something is broken, incorrect, or unclear, please report it. :]
+
+Email:
+r3d@itsr3dguy.dev
+
+Discord:
+ItsR3dGuy
