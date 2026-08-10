@@ -1,4 +1,4 @@
-> By using this you agree to the [OUL License v1.1](../license.md) in the root folder. Please read it.
+> By using this you agree to the [OUL License v1.1](../LICENSE.md) in the root folder. Please read it.
 
 ### Difficulty to set up: Very Easy [🟢👶]
 
