@@ -1,3 +1,5 @@
+### Difficulty to set-up: Hard [🔴] 
+
 # Setup - Score & Tasks
 
 ## 1. Create a Supabase Project
