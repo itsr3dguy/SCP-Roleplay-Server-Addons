@@ -1,3 +1,5 @@
+> By using this you agree to the [OUL License v1.1](../LICENSE.md) in the root folder. Please read it.
+
 ### Difficulty to set up: Easy [🟢]
 
 # Setup - Trash 'n Craft
