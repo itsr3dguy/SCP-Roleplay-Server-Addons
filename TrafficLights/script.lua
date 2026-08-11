@@ -25,11 +25,12 @@ local BUTTONS = {
 }
 
 -- Timings (seconds).
-local MIN_GREEN  = 4    -- a green lasts at least this long before it can switch
-local AMBER_TIME = 2
-local PED_GREEN  = 7
-local ALL_RED    = 1.5
-local PAD_HEIGHT = 6    -- how far above the pad still counts as "on" it
+local MIN_GREEN   = 4    -- a green lasts at least this long before it can switch
+local AMBER_TIME  = 2    -- amber when a green is ending (going to red)
+local START_AMBER = 1.5  -- amber when a red is about to turn green (red -> amber -> green)
+local PED_GREEN   = 7
+local ALL_RED     = 1.5
+local PAD_HEIGHT  = 6    -- how far above the pad still counts as "on" it
 
 -- Colors.
 local RED   = Color3.new(0.85, 0.10, 0.10)
@@ -83,11 +84,13 @@ end
 local function render()
     for i, dir in ipairs(DIRECTIONS) do
         local col = RED
-        if phase == "GREEN" and i == current then col = GREEN
-        elseif phase == "AMBER" and i == current then col = AMBER end
+        if i == current then
+            if phase == "GREEN" then col = GREEN
+            elseif phase == "END_AMBER" or phase == "START_AMBER" then col = AMBER end
+        end
         paintNames({ dir.light }, col)
     end
-    paintNames(CROSSWALK_LIGHTS, (phase == "PED") and GREEN or RED)
+    paintNames(CROSSWALK_LIGHTS, (phase == "PED") and GREEN or RED)   -- crosswalks never amber
 end
 
 -- ============================== EVENTS ==============================
@@ -125,30 +128,35 @@ while true do
     if phase == "GREEN" then
         if timer >= MIN_GREEN then
             if pedRequested then
-                nextDir = "PED"; phase = "AMBER"; timer = 0; render()
+                nextDir = "PED"; phase = "END_AMBER"; timer = 0; render()
             else
                 local nd = nextDemanded()
                 if nd then
-                    nextDir = nd; phase = "AMBER"; timer = 0; render()
+                    nextDir = nd; phase = "END_AMBER"; timer = 0; render()
                 end
                 -- otherwise: stay green (rest on this direction)
             end
         end
 
-    elseif phase == "AMBER" then
+    elseif phase == "END_AMBER" then          -- the outgoing direction ambers out
         if timer >= AMBER_TIME then
             if nextDir == "PED" then
                 phase = "PED"; pedRequested = false
             else
-                current = nextDir; phase = "GREEN"
+                current = nextDir; phase = "START_AMBER"   -- incoming direction ambers in
             end
             timer = 0; render()
+        end
+
+    elseif phase == "START_AMBER" then        -- incoming direction: red -> amber -> green
+        if timer >= START_AMBER then
+            phase = "GREEN"; timer = 0; render()
         end
 
     elseif phase == "PED" then
         if timer >= PED_GREEN then phase = "PED_CLEAR"; timer = 0; render() end
 
     elseif phase == "PED_CLEAR" then
-        if timer >= ALL_RED then phase = "GREEN"; timer = 0; render() end
+        if timer >= ALL_RED then phase = "START_AMBER"; timer = 0; render() end  -- resume with red->amber->green
     end
 end
